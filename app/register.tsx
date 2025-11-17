@@ -9,32 +9,37 @@ import {
   Platform,
   Alert,
   ScrollView,
-  SafeAreaView, // <-- Sangat penting untuk stabilitas
+  SafeAreaView,
+  ActivityIndicator,
 } from 'react-native';
 import { Link, useRouter } from 'expo-router';
-// 1. IMPORT IKON (BARU)
 import { Ionicons } from '@expo/vector-icons';
 
+// --- 1. IMPORT FUNGSI FIREBASE (LENGKAPI) ---
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+// Import 'db' (database) dan 'auth'
+import { auth, db } from '../config/firebaseConfig';
+// Import fungsi untuk MENULIS ke Firestore
+import { setDoc, doc } from 'firebase/firestore';
+
 const RegisterScreen = () => {
-  // State (tidak berubah)
+  // ... (State tidak berubah) ...
   const [fullName, setFullName] = useState<string>('');
-  const [username, setUsername] = useState<string>('');
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
   const [agreed, setAgreed] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [isPasswordVisible, setIsPasswordVisible] = useState<boolean>(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] =
+    useState<boolean>(false);
 
   const router = useRouter();
 
-  // Fungsi handleRegister (tidak berubah)
-  const handleRegister = () => {
-    if (
-      !fullName ||
-      !username ||
-      !email ||
-      !password ||
-      !confirmPassword
-    ) {
+  // --- 2. FUNGSI HANDLE REGISTER (DIPERBARUI) ---
+  const handleRegister = async () => {
+    // ... (Validasi frontend tidak berubah) ...
+    if (!fullName || !email || !password || !confirmPassword) {
       Alert.alert('Error', 'Semua field harus diisi.');
       return;
     }
@@ -46,25 +51,62 @@ const RegisterScreen = () => {
       Alert.alert('Error', 'Anda harus menyetujui Terms & Conditions.');
       return;
     }
-    console.log('--- DATA REGISTRASI ---');
-    console.log('Full Name:', fullName);
-    console.log('Username:', username);
-    console.log('Email:', email);
-    Alert.alert('Sukses', 'Registrasi berhasil! (Placeholder)');
-    // router.replace('/');
+
+    setLoading(true);
+
+    try {
+      // --- TAHAP 1: BUAT AKUN DI AUTHENTICATION ---
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+
+      // Dapatkan User ID (uid) dari pengguna yang baru dibuat
+      const user = userCredential.user;
+      console.log('User berhasil dibuat di Auth:', user.uid);
+
+      // --- TAHAP 2: SIMPAN DATA PROFIL KE FIRESTORE ---
+      // Kita akan membuat dokumen baru di koleksi 'users'
+      // Nama dokumennya akan sama dengan UID pengguna
+      await setDoc(doc(db, 'users', user.uid), {
+        fullName: fullName,
+        email: email,
+        createdAt: new Date(), // Simpan tanggal pendaftaran
+      });
+
+      console.log('Data user berhasil disimpan di Firestore');
+
+      // --- TAHAP 3: BERI TAHU PENGGUNA ---
+      Alert.alert('Sukses', 'Akun Anda berhasil dibuat!');
+      router.replace('/'); // Arahkan kembali ke login
+    } catch (error: any) {
+      // ... (Penanganan error tidak berubah) ...
+      console.error('Error registrasi:', error.code, error.message);
+      if (error.code === 'auth/email-already-in-use') {
+        Alert.alert('Error', 'Email ini sudah terdaftar.');
+      } else if (error.code === 'auth/weak-password') {
+        Alert.alert('Error', 'Password terlalu lemah (minimal 6 karakter).');
+      } else {
+        Alert.alert('Error', 'Terjadi kesalahan. Coba lagi nanti.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // --- TAMPILAN (RENDER) - (LAYOUT DIPERBARUI) ---
+  // --- TAMPILAN (RENDER) ---
+  // (Tidak ada yang berubah di bagian tampilan)
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 2. Tombol Back diletakkan di luar ScrollView agar STABIL */}
+      {/* Header */}
       <View style={styles.headerContainer}>
         <TouchableOpacity
-          onPress={() => router.back()} // Fungsi kembali
-          style={styles.backButton} // Style baru
+          onPress={() => router.back()}
+          style={styles.backButton}
+          disabled={loading}
         >
-          {/* 3. Gunakan Ikon, bukan Teks */}
           <Ionicons name="arrow-back" size={28} color="#6A5C8A" />
         </TouchableOpacity>
       </View>
@@ -74,7 +116,6 @@ const RegisterScreen = () => {
         style={{ flex: 1 }}
       >
         <ScrollView contentContainerStyle={styles.scrollContainer}>
-          {/* Wrapper untuk Form */}
           <View style={styles.innerContainer}>
             {/* Input Full Name */}
             <TextInput
@@ -85,15 +126,7 @@ const RegisterScreen = () => {
               onChangeText={setFullName}
             />
 
-            {/* ... (Semua input lainnya sama persis) ... */}
-            <TextInput
-              style={styles.input}
-              placeholder="Username"
-              placeholderTextColor="#8A7DAB"
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-            />
+            {/* Input Email */}
             <TextInput
               style={styles.input}
               placeholder="Email"
@@ -103,28 +136,63 @@ const RegisterScreen = () => {
               keyboardType="email-address"
               autoCapitalize="none"
             />
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor="#8A7DAB"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Confirm Password"
-              placeholderTextColor="#8A7DAB"
-              value={confirmPassword}
-              onChangeText={setConfirmPassword}
-              secureTextEntry
-            />
 
-            {/* Checkbox Terms & Conditions (Sama) */}
+            {/* Input Password (dengan ikon mata) */}
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Password"
+                placeholderTextColor="#8A7DAB"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!isPasswordVisible}
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+              >
+                <Ionicons
+                  name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+                  size={24}
+                  color="#6A5C8A"
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Input Confirm Password (dengan ikon mata) */}
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Confirm Password"
+                placeholderTextColor="#8A7DAB"
+                value={confirmPassword}
+                onChangeText={setConfirmPassword}
+                secureTextEntry={!isConfirmPasswordVisible}
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() =>
+                  setIsConfirmPasswordVisible(!isConfirmPasswordVisible)
+                }
+              >
+                <Ionicons
+                  name={
+                    isConfirmPasswordVisible
+                      ? 'eye-off-outline'
+                      : 'eye-outline'
+                  }
+                  size={24}
+                  color="#6A5C8A"
+                />
+              </TouchableOpacity>
+            </View>
+
+            {/* Checkbox */}
             <View style={styles.checkboxContainer}>
               <TouchableOpacity
                 style={styles.checkbox}
                 onPress={() => setAgreed(!agreed)}
+                disabled={loading}
               >
                 {agreed && <Text style={styles.checkmark}>✓</Text>}
               </TouchableOpacity>
@@ -133,15 +201,23 @@ const RegisterScreen = () => {
               </Text>
             </View>
 
-            {/* Tombol Register (Sama) */}
+            {/* Tombol Register */}
             <TouchableOpacity
-              style={styles.registerButton}
+              style={[
+                styles.registerButton,
+                loading && styles.buttonDisabled,
+              ]}
               onPress={handleRegister}
+              disabled={loading}
             >
-              <Text style={styles.registerButtonText}>Register</Text>
+              {loading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.registerButtonText}>Register</Text>
+              )}
             </TouchableOpacity>
 
-            {/* Link ke Halaman Login (Sama) */}
+            {/* Link Login */}
             <View style={styles.loginContainer}>
               <Text style={styles.loginText}>Already have an account? </Text>
               <Link href="/" asChild>
@@ -157,37 +233,16 @@ const RegisterScreen = () => {
   );
 };
 
-// --- STYLING (DIPERBARUI) ---
+// --- STYLING (Tidak ada yang berubah) ---
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FAF9FF',
-  },
-  // (BARU) Container untuk tombol back
+  container: { flex: 1, backgroundColor: '#FAF9FF' },
   headerContainer: {
-    paddingHorizontal: 15, // Jarak dari pinggir
-    paddingTop: Platform.OS === 'android' ? 15 : 0, // Extra padding untuk Android
+    paddingHorizontal: 15,
+    paddingTop: Platform.OS === 'android' ? 15 : 0,
   },
-  // (BARU) Style untuk tombol back (lebih stabil)
-  backButton: {
-    padding: 10, // Area klik lebih besar
-    alignSelf: 'flex-start', // Posisikan di kiri
-  },
-  scrollContainer: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    paddingBottom: 20,
-  },
-  innerContainer: {
-    width: '85%',
-    alignItems: 'center',
-    alignSelf: 'center',
-    // Hapus 'marginTop: 20' karena tombol back sudah di luar
-  },
-  // (LAMA - Hapus style backButton & backButtonText yang lama)
-  // ...
-
-  // (Semua style lain di bawah ini SAMA)
+  backButton: { padding: 10, alignSelf: 'flex-start' },
+  scrollContainer: { flexGrow: 1, justifyContent: 'center', paddingBottom: 20 },
+  innerContainer: { width: '85%', alignItems: 'center', alignSelf: 'center' },
   input: {
     width: '100%',
     backgroundColor: '#E6E0FF',
@@ -198,6 +253,22 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 15,
   },
+  passwordContainer: {
+    width: '100%',
+    backgroundColor: '#E6E0FF',
+    borderRadius: 15,
+    marginBottom: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 15,
+    fontSize: 16,
+    color: '#333',
+  },
+  eyeIcon: { marginLeft: 10 },
   checkboxContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -217,15 +288,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#E6E0FF',
   },
-  checkmark: {
-    color: '#6D47FF',
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  checkboxLabel: {
-    fontSize: 14,
-    color: '#6A5C8A',
-  },
+  checkmark: { color: '#6D47FF', fontSize: 14, fontWeight: 'bold' },
+  checkboxLabel: { fontSize: 14, color: '#6A5C8A' },
   registerButton: {
     width: '100%',
     backgroundColor: '#6D47FF',
@@ -239,24 +303,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 3,
   },
-  registerButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  loginContainer: {
-    flexDirection: 'row',
-    marginTop: 30,
-  },
-  loginText: {
-    fontSize: 14,
-    color: '#6A5C8A',
-  },
-  loginLink: {
-    fontSize: 14,
-    color: '#6D47FF',
-    fontWeight: 'bold',
-  },
+  buttonDisabled: { backgroundColor: '#BCA9FF' },
+  registerButtonText: { color: '#FFFFFF', fontSize: 18, fontWeight: 'bold' },
+  loginContainer: { flexDirection: 'row', marginTop: 30 },
+  loginText: { fontSize: 14, color: '#6A5C8A' },
+  loginLink: { fontSize: 14, color: '#6D47FF', fontWeight: 'bold' },
 });
 
 export default RegisterScreen;

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState } from 'react';
 import {
   Alert,
   Image,
@@ -10,93 +10,128 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-} from "react-native";
-// Di Expo Router, kita pakai 'expo-router' untuk navigasi
-import { Link, useRouter } from "expo-router";
+  ActivityIndicator,
+} from 'react-native';
+import { Link, useRouter } from 'expo-router';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../config/firebaseConfig';
+// --- 1. IMPORT IKON ---
+import { Ionicons } from '@expo/vector-icons';
 
 const LoginScreen = () => {
-  // State untuk menyimpan nilai dari input
-  const [username, setUsername] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
+  const [email, setEmail] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [loading, setLoading] = useState<boolean>(false);
+  // --- 2. STATE BARU UNTUK SHOW/HIDE PASSWORD ---
+  const [isPasswordVisible, setIsPasswordVisible] = useState<boolean>(false);
 
-  // Hook navigasi baru dari Expo Router
   const router = useRouter();
 
-  // --- FUNGSI FUNGSIONAL (VALIDASI 3 TAHAP) ---
-
-  const handleLogin = () => {
-    console.log("Attempting login with:", username, password);
-
-    // --- VALIDASI BARU ---
-    // 1. Cek jika KEDUANYA kosong
-    if (!username && !password) {
-      Alert.alert("Error", "Username dan Password tidak boleh kosong.");
-      return; // Hentikan fungsi
+  // Fungsi handleLogin (tidak berubah)
+  const handleLogin = async () => {
+    if (!email && !password) {
+      Alert.alert('Error', 'Email dan Password tidak boleh kosong.');
+      return;
     }
-
-    // 2. Jika lolos #1, cek username
-    if (!username) {
-      Alert.alert("Error", "Username tidak boleh kosong.");
-      return; // Hentikan fungsi
+    if (!email) {
+      Alert.alert('Error', 'Email tidak boleh kosong.');
+      return;
     }
-
-    // 3. Jika lolos #1 dan #2, cek password
     if (!password) {
-      Alert.alert("Error", "Password tidak boleh kosong.");
-      return; // Hentikan fungsi
+      Alert.alert('Error', 'Password tidak boleh kosong.');
+      return;
     }
-    // --- AKHIR VALIDASI ---
-
-    // Nanti di sini kita akan panggil Firebase
-    // Jika berhasil, kita pindah ke halaman 'home'
-    // router.replace('/home'); // (Kita akan atur ini nanti)
+    setLoading(true);
+    try {
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      console.log('Login berhasil:', userCredential.user.uid);
+      router.replace('/home'); 
+    } catch (error: any) {
+      if (
+        error.code === 'auth/invalid-credential' ||
+        error.code === 'auth/user-not-found' ||
+        error.code === 'auth/wrong-password'
+      ) {
+        Alert.alert('Error', 'Email atau Password yang Anda masukkan salah.');
+      } else {
+        Alert.alert('Error', 'Terjadi kesalahan. Coba lagi nanti.');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   // --- TAMPILAN (RENDER) ---
-
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
       <ScrollView contentContainerStyle={styles.scrollContainer}>
         <View style={styles.innerContainer}>
-          {/* 💡 PERHATIAN: Pastikan gambar Anda ada di path ini */}
           <Image
-            source={require("../assets/images/login-hero.png")}
+            source={require('../assets/images/login-hero.png')}
             style={styles.heroImage}
             resizeMode="contain"
           />
 
           <Text style={styles.title}>Do-It Now</Text>
 
+          {/* Input Email (Tidak berubah) */}
           <TextInput
             style={styles.input}
-            placeholder="Username"
+            placeholder="Email"
             placeholderTextColor="#8A7DAB"
-            value={username}
-            onChangeText={setUsername}
+            value={email}
+            onChangeText={setEmail}
             autoCapitalize="none"
+            keyboardType="email-address"
           />
 
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#8A7DAB"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
+          {/* --- 3. INPUT PASSWORD (DIPERBARUI) --- */}
+          <View style={styles.passwordContainer}>
+            <TextInput
+              style={styles.passwordInput}
+              placeholder="Password"
+              placeholderTextColor="#8A7DAB"
+              value={password}
+              onChangeText={setPassword}
+              // secureTextEntry di-toggle oleh state
+              secureTextEntry={!isPasswordVisible} 
+            />
+            <TouchableOpacity
+              style={styles.eyeIcon}
+              onPress={() => setIsPasswordVisible(!isPasswordVisible)}
+            >
+              <Ionicons
+                name={isPasswordVisible ? 'eye-off-outline' : 'eye-outline'}
+                size={24}
+                color="#6A5C8A"
+              />
+            </TouchableOpacity>
+          </View>
+          {/* ----------------------------------- */}
 
-          <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-            <Text style={styles.loginButtonText}>Login</Text>
+          {/* Tombol Login (Tidak berubah) */}
+          <TouchableOpacity
+            style={[styles.loginButton, loading && styles.buttonDisabled]}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.loginButtonText}>Login</Text>
+            )}
           </TouchableOpacity>
 
+          {/* Link Register (Tidak berubah) */}
           <View style={styles.registerContainer}>
             <Text style={styles.registerText}>Don't have an account? </Text>
-            {/* Ini akan otomatis mencari file 'register.tsx' 
-              yang akan kita buat selanjutnya 
-            */}
             <Link href="/register" asChild>
               <TouchableOpacity>
                 <Text style={styles.registerLink}>Register here!</Text>
@@ -109,73 +144,86 @@ const LoginScreen = () => {
   );
 };
 
-// --- STYLING ---
+// --- 4. STYLING (DIPERBARUI) ---
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#FAF9FF",
-  },
+  // ... (container, scrollContainer, innerContainer, heroImage, title tidak berubah)
+  container: { flex: 1, backgroundColor: '#FAF9FF' },
   scrollContainer: {
     flexGrow: 1,
-    justifyContent: "center",
-    alignItems: "center",
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  innerContainer: {
-    width: "85%",
-    alignItems: "center",
-    paddingVertical: 40,
-  },
-  heroImage: {
-    width: 300,
-    height: 250,
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 42,
-    fontWeight: "bold",
-    color: "#6A5C8A",
-    marginBottom: 30,
-  },
+  innerContainer: { width: '85%', alignItems: 'center', paddingVertical: 40 },
+  heroImage: { width: 300, height: 250, marginBottom: 20 },
+  title: { fontSize: 42, fontWeight: 'bold', color: '#6A5C8A', marginBottom: 30 },
+
+  // Style input biasa (untuk Email)
   input: {
-    width: "100%",
-    backgroundColor: "#E6E0FF",
+    width: '100%',
+    backgroundColor: '#E6E0FF',
     borderRadius: 15,
     paddingVertical: 15,
     paddingHorizontal: 20,
     fontSize: 16,
-    color: "#333",
+    color: '#333',
     marginBottom: 15,
   },
+
+  // --- STYLE BARU UNTUK PASSWORD ---
+  passwordContainer: {
+    width: '100%',
+    backgroundColor: '#E6E0FF',
+    borderRadius: 15,
+    marginBottom: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20, // Padding horizontal di container
+  },
+  passwordInput: {
+    flex: 1, // Input mengambil sisa ruang
+    paddingVertical: 15, // Padding vertical di input
+    fontSize: 16,
+    color: '#333',
+  },
+  eyeIcon: {
+    marginLeft: 10, // Jarak antara input dan ikon
+  },
+  // --------------------------------
+
+  // ... (sisa style tidak berubah)
   loginButton: {
-    width: "100%",
-    backgroundColor: "#6D47FF",
+    width: '100%',
+    backgroundColor: '#6D47FF',
     borderRadius: 15,
     paddingVertical: 18,
-    alignItems: "center",
+    alignItems: 'center',
     marginTop: 15,
     elevation: 3,
-    shadowColor: "#000",
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
   },
+  buttonDisabled: {
+    backgroundColor: '#BCA9FF',
+  },
   loginButtonText: {
-    color: "#FFFFFF",
+    color: '#FFFFFF',
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: 'bold',
   },
   registerContainer: {
-    flexDirection: "row",
+    flexDirection: 'row',
     marginTop: 20,
   },
   registerText: {
     fontSize: 14,
-    color: "#6A5C8A",
+    color: '#6A5C8A',
   },
   registerLink: {
     fontSize: 14,
-    color: "#6D47FF",
-    fontWeight: "bold",
+    color: '#6D47FF',
+    fontWeight: 'bold',
   },
 });
 
