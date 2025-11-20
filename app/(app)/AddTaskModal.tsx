@@ -1,174 +1,392 @@
-import React from 'react';
+// AddTaskModal.tsx
+import React, { useState } from 'react';
 import {
+  Modal,
   View,
   Text,
-  StyleSheet,
-  Modal,
   TextInput,
   TouchableOpacity,
+  StyleSheet,
+  SafeAreaView,
   ScrollView,
+  Platform,
+  Alert,
 } from 'react-native';
+import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
-// MOCK_CATEGORIES perlu diimpor atau didefinisikan ulang jika file ini terpisah
-// ASUMSI: Anda sudah memiliki akses ke MOCK_CATEGORIES
-const MOCK_CATEGORIES: string[] = ['Work', 'Daily', 'Vacation', 'Me time', 'Health'];
+// Definisikan tipe lokal (HARUS SAMA dengan home.tsx)
+type CategoryLiteral = 'Work' | 'Daily' | 'Vacation' | 'Me time' | 'Health';
+type TaskPriority = 'High' | 'Medium' | 'Low'; 
+
+const MOCK_CATEGORIES: CategoryLiteral[] = ['Work', 'Daily', 'Vacation', 'Me time', 'Health'];
+const MOCK_PRIORITIES: TaskPriority[] = ['High', 'Medium', 'Low']; 
+const MAX_TITLE_LENGTH = 20;
+
+// --- FUNGSI HELPER TANGGAL ---
+const formatDisplayDate = (isoDate: string): string => {
+    try {
+        const date = new Date(isoDate);
+        if (isNaN(date.getTime())) return "Pilih Tanggal"; 
+        
+        const today = new Date();
+        const dateStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+        if (dateStart.getTime() === todayStart.getTime()) {
+            return 'Hari ini'; 
+        }
+
+        return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    } catch (e) {
+        return "Pilih Tanggal";
+    }
+};
+// -----------------------------
 
 
 interface AddTaskModalProps {
   isVisible: boolean;
   onClose: () => void;
+  onSave: (title: string, category: CategoryLiteral, priority: TaskPriority, dueDate: string, description: string) => void; 
+
+  // State values
   title: string;
+  category: CategoryLiteral;
+  priority: TaskPriority;
+  dueDate: string;
+
+  // State setters
   onTitleChange: (text: string) => void;
-  category: string;
-  onCategorySelect: (category: string) => void; 
-  onSave: () => void;
+  onCategorySelect: (category: CategoryLiteral) => void; 
+  onPrioritySelect: (priority: TaskPriority) => void; 
+  onDueDateChange: (date: string) => void;
 }
 
 const AddTaskModal: React.FC<AddTaskModalProps> = ({
   isVisible,
   onClose,
+  onSave,
   title,
   onTitleChange,
   category,
   onCategorySelect,
-  onSave,
+  priority,
+  onPrioritySelect,
+  dueDate,
+  onDueDateChange,
 }) => {
+  const [description, setDescription] = useState(''); 
+  const [showCategoryPicker, setShowCategoryPicker] = useState(false); 
+  const [showPriorityPicker, setShowPriorityPicker] = useState(false); 
+  const [showDatePicker, setShowDatePicker] = useState(false); 
+
+  const handleSave = () => {
+    if (title.trim() === '') {
+      Alert.alert('Error', 'Data harus diisi semua');
+      return;
+    }
+    onSave(title, category, priority, dueDate, description);
+    
+    setDescription('');
+    setShowCategoryPicker(false);
+    setShowPriorityPicker(false);
+  };
+
+  const handleTitleChange = (text: string) => {
+    if (text.length <= MAX_TITLE_LENGTH) {
+        onTitleChange(text);
+    }
+  };
+
+  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    const currentDate = selectedDate || new Date(dueDate);
+    
+    if (Platform.OS !== 'ios') {
+        setShowDatePicker(false);
+    }
+
+    if (event.type === 'set' && selectedDate) {
+        onDueDateChange(currentDate.toISOString());
+    }
+  };
+
+
   return (
     <Modal
-      visible={isVisible}
       animationType="slide"
       transparent={true}
+      visible={isVisible}
       onRequestClose={onClose}
     >
-      <View style={modalStyles.centeredView}>
-        <View style={modalStyles.modalView}>
-          <Text style={modalStyles.modalTitle}>Buat Tugas Baru</Text>
+      <SafeAreaView style={styles.modalOverlay}>
+        <View style={styles.modalContainer}>
+          <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
+            
+            {/* HEADER MODAL */}
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={onClose}>
+                <Icon name="arrow-left" size={24} color="#333" />
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Buat Tugas</Text>
+              <View style={{ width: 24 }} /> {/* Spacer */}
+            </View>
 
-          {/* Input Judul */}
-          <TextInput
-            style={modalStyles.input}
-            placeholder="Judul Tugas (ex: Beli kebutuhan dapur)"
-            value={title}
-            onChangeText={onTitleChange}
-            placeholderTextColor="#8A7DAB"
-          />
-          
-          {/* Pemilih Kategori (Horizontal Scroll) */}
-          <View style={modalStyles.categorySelector}>
-            {/* PASTIKAN TEXT DIBAWAH INI DIBUNGKUS TEXT */}
-            <Text style={modalStyles.label}>Kategori:</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              {MOCK_CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  style={[
-                    modalStyles.categoryChip,
-                    category === cat ? modalStyles.categoryChipActive : modalStyles.categoryChipInactive,
-                  ]}
-                  onPress={() => onCategorySelect(cat)}
+            {/* FORM: KATEGORI (Aktif) */}
+            <View style={styles.cardContainer}>
+                <Text style={styles.label}>Kategori</Text>
+                <TouchableOpacity 
+                    style={styles.dropdownInput} 
+                    onPress={() => {
+                        setShowCategoryPicker(p => !p); 
+                        setShowPriorityPicker(false); 
+                        setShowDatePicker(false); 
+                    }} 
                 >
-                  <Text style={[modalStyles.categoryText, category === cat && {color: 'white'}]}>{cat}</Text>
+                    <Text style={styles.dropdownText}>{category}</Text>
+                    <Icon name="chevron-down" size={20} color="#555" />
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-          
-          {/* Tombol Aksi */}
-          <View style={modalStyles.buttonContainer}>
-            <TouchableOpacity style={modalStyles.buttonCancel} onPress={onClose}>
-              <Text style={modalStyles.textCancel}>Batal</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={modalStyles.buttonSave} onPress={onSave}>
-              <Text style={modalStyles.textSave}>Simpan Tugas</Text>
-            </TouchableOpacity>
-          </View>
+                
+                {showCategoryPicker && (
+                    <View style={styles.inlinePickerContainer}>
+                        {MOCK_CATEGORIES.map((cat) => (
+                            <TouchableOpacity
+                                key={cat}
+                                style={[styles.chip, category === cat && styles.chipActive]}
+                                onPress={() => {
+                                    onCategorySelect(cat);
+                                    setShowCategoryPicker(false);
+                                }}
+                            >
+                                <Text style={[styles.chipText, category === cat && styles.chipTextActive]}>{cat}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
+            </View>
+
+            {/* FORM: JENIS TUGAS / PRIORITAS (Aktif) */}
+            <View style={styles.cardContainer}>
+                <Text style={styles.label}>Jenis Tugas</Text>
+                <TouchableOpacity 
+                    style={styles.dropdownInput} 
+                    onPress={() => {
+                        setShowPriorityPicker(p => !p); 
+                        setShowCategoryPicker(false); 
+                        setShowDatePicker(false); 
+                    }} 
+                >
+                    <Text style={styles.dropdownText}>
+                        {priority} 
+                    </Text>
+                    <Icon name="chevron-down" size={20} color="#555" />
+                </TouchableOpacity>
+                
+                {showPriorityPicker && (
+                    <View style={styles.inlinePickerContainer}>
+                        {MOCK_PRIORITIES.map((prio) => (
+                            <TouchableOpacity
+                                key={prio}
+                                style={[styles.chip, priority === prio && styles.chipActive]}
+                                onPress={() => {
+                                    onPrioritySelect(prio);
+                                    setShowPriorityPicker(false); 
+                                }}
+                            >
+                                <Text style={[styles.chipText, priority === prio && styles.chipTextActive]}>{prio}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
+            </View>
+            
+            {/* FORM: NAMA TUGAS (Dengan Counter) */}
+            <View style={styles.cardContainer}>
+                <Text style={styles.label}>Nama Tugas</Text>
+                <TextInput
+                    style={styles.input}
+                    placeholder="Market Research"
+                    value={title}
+                    onChangeText={handleTitleChange} 
+                />
+                <Text style={styles.counterText}>
+                    {title.length}/{MAX_TITLE_LENGTH}
+                </Text>
+            </View>
+
+            {/* FORM: TANGGAL (Aktif) */}
+            <View style={styles.cardContainer}>
+                <Text style={styles.label}>Tanggal</Text>
+                <TouchableOpacity 
+                    style={styles.datePickerButton} 
+                    onPress={() => {
+                        setShowDatePicker(true);      
+                        setShowCategoryPicker(false); 
+                        setShowPriorityPicker(false); 
+                    }}
+                >
+                    <Text style={styles.datePickerText}>{formatDisplayDate(dueDate)}</Text>
+                    <Icon name="calendar-month" size={20} color="#555" />
+                </TouchableOpacity>
+            </View>
+
+            {/* --- DATE TIME PICKER UTAMA --- */}
+            {showDatePicker && (
+                <DateTimePicker
+                    value={new Date(dueDate)} 
+                    mode={'date'}
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    onChange={handleDateChange}
+                    minimumDate={new Date()}
+                />
+            )}
+            {/* --------------------------------- */}
+
+            {/* FORM: DESKRIPSI (SAMA) */}
+            <View style={[styles.cardContainer, { height: 150 }]}>
+                <Text style={styles.label}>Deskripsi</Text>
+                <TextInput
+                    style={styles.textArea}
+                    placeholder="Tulis deskripsi tugas Anda di sini..."
+                    value={description}
+                    onChangeText={setDescription}
+                    multiline={true}
+                    textAlignVertical="top"
+                />
+            </View>
+          </ScrollView>
+
+          {/* TOMBOL SAVE */}
+          <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+            <Text style={styles.saveButtonText}>Tambah Tugas</Text>
+          </TouchableOpacity>
         </View>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 };
 
+
 // --- STYLES MODAL ---
-const modalStyles = StyleSheet.create({
-  centeredView: {
+const styles = StyleSheet.create({
+  modalOverlay: {
     flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)', 
+    backgroundColor: '#F8F9FE',
   },
-  modalView: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 25,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+  modalContainer: {
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    marginBottom: 10,
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 20,
     color: '#333',
   },
-  input: {
-    height: 50,
-    borderColor: '#E0E0E0',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 15,
+  cardContainer: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 15,
     marginBottom: 15,
-    fontSize: 16,
-    backgroundColor: '#F9F9F9',
-    color: '#333',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   label: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     color: '#555',
     marginBottom: 8,
   },
-  categorySelector: {
-    marginBottom: 20,
-  },
-  categoryChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 15,
-    borderRadius: 20,
-    marginRight: 10,
-    borderWidth: 1,
-  },
-  categoryChipActive: { backgroundColor: '#5A31F4', borderColor: '#5A31F4' },
-  categoryChipInactive: { backgroundColor: '#E0E0E0', borderColor: '#E0E0E0' },
-  categoryText: { fontSize: 14, fontWeight: '600', color: 'black' },
-  
-  buttonContainer: {
+  dropdownInput: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 10,
-  },
-  buttonCancel: {
-    flex: 1,
-    padding: 15,
-    borderRadius: 10,
-    backgroundColor: '#F0F0F0',
-    marginRight: 10,
     alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
   },
-  textCancel: {
+  dropdownText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  input: {
+    paddingVertical: 5,
+    fontSize: 16,
+    color: '#333',
+  },
+  textArea: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    padding: 0,
+  },
+  counterText: {
+    textAlign: 'right',
+    fontSize: 12,
+    color: '#999',
+    marginTop: 5,
+  },
+  datePickerButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  datePickerText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  // --- STYLE PICKER INLINE BARU ---
+  inlinePickerContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10,
+    gap: 8,
+  },
+  chip: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  chipActive: {
+    backgroundColor: '#5A31F4',
+    borderColor: '#5A31F4',
+  },
+  chipText: {
+    fontSize: 13,
     color: '#555',
+  },
+  chipTextActive: {
+    color: '#FFFFFF',
     fontWeight: 'bold',
   },
-  buttonSave: {
-    flex: 1.5,
-    padding: 15,
-    borderRadius: 10,
+  // ---------------------------------
+  saveButton: {
     backgroundColor: '#5A31F4',
+    padding: 18,
+    borderRadius: 12,
     alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 30,
   },
-  textSave: {
-    color: 'white',
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
     fontWeight: 'bold',
   },
 });

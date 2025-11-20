@@ -1,21 +1,25 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react'; // Tambahkan useEffect
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
   ScrollView,
-  // HAPUS FlatList dari import
   TouchableOpacity,
   Dimensions,
   Modal, 
   TextInput,
+  Alert, 
 } from 'react-native';
 import { MaterialCommunityIcons as Icon } from '@expo/vector-icons';
-// --- TAMBAHKAN INI ---
 import { SwipeListView } from 'react-native-swipe-list-view'; 
-// ---------------------
 import AddTaskModal from './AddTaskModal'; 
+
+// --- 1. IMPORT FIREBASE BARU ---
+// 🔥 PERBAIKAN IMPORT PATH: Menggunakan path yang lebih aman
+import { db, auth } from '../../config/firebaseConfig'; 
+import { collection, query, where, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore'; 
+// ----------------------------
 
 type TaskPriority = 'High' | 'Medium' | 'Low';
 type FilterType = 'Today' | 'Week' | 'Upcoming' | 'Overdue';
@@ -44,30 +48,10 @@ const FILTERS: { key: FilterType; label: string }[] = [
   { key: 'Overdue', label: 'Terlambat' },
 ];
 
-// --- DATA DUMMY (FINAL) ---
-const today = new Date();
-const tomorrow = new Date(today);
-tomorrow.setDate(today.getDate() + 1);
-const yesterday = new Date(today);
-yesterday.setDate(today.getDate() - 1);
-const nextWeek = new Date(today);
-nextWeek.setDate(today.getDate() + 7);
-const endOfWeek = new Date(today);
-endOfWeek.setDate(today.getDate() + (6 - today.getDay()));
-const yesterdayNight = new Date(yesterday);
-yesterdayNight.setHours(23, 0, 0, 0);
+// 🔥 Hapus Data Dummy (INITIAL_TASKS) dan variabel penunjang
+const today = new Date(); // Pertahankan hanya untuk inisialisasi date state
 
-const INITIAL_TASKS: Task[] = [
-  { id: '1', project: 'Grocery app', title: 'Market Research', priority: 'High', completedAt: null, category: 'Work', dueDate: today.toISOString() },
-  { id: '2', project: 'Personal', title: 'Bayar tagihan', priority: 'Medium', completedAt: null, category: 'Daily', dueDate: tomorrow.toISOString() },
-  { id: '3', project: 'Refactor', title: 'Buat Wireframe', priority: 'Low', completedAt: null, category: 'Work', dueDate: nextWeek.toISOString() },
-  { id: '4G', project: 'Grocery app', title: 'Analisis Kompetitor', priority: 'High', completedAt: null, category: 'Work', dueDate: endOfWeek.toISOString() },
-  { id: '5', project: 'Tugas Kuliah', title: 'Revisi Laporan (Terlambat)', priority: 'High', completedAt: null, category: 'Work', dueDate: yesterday.toISOString() },
-  { id: '6', project: 'Tugas Kuliah', title: 'Kumpulkan Laporan (Akan hilang)', priority: 'High', completedAt: yesterdayNight.toISOString(), category: 'Work', dueDate: yesterday.toISOString() },
-  { id: '7', project: 'Tugas Kuliah', title: 'Presentasi (Baru selesai)', priority: 'Medium', completedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(), category: 'Work', dueDate: today.toISOString() },
-];
-
-// --- FUNGSI HELPER ---
+// --- FUNGSI HELPER (SAMA) ---
 
 const formatDisplayDate = (isoDate: string): string => {
   const date = new Date(isoDate);
@@ -95,7 +79,7 @@ const getPriorityStyle = (priority: TaskPriority) => {
   }
 };
 
-// --- KOMPONEN CHILD ---
+// --- KOMPONEN CHILD (SAMA) ---
 
 const TaskItem: React.FC<any> = ({ item, onToggleCompletion }) => {
   const priorityStyle = getPriorityStyle(item.priority);
@@ -146,7 +130,7 @@ const Home: React.FC = () => {
   type CategoryLiteral = Task['category'];
   
   const [activeCategory, setActiveCategory] = useState<string>('Work');
-  const [tasks, setTasks] = useState<Task[]>(INITIAL_TASKS);
+  const [tasks, setTasks] = useState<Task[]>([]); 
   const [activeFilter, setActiveFilter] = useState<FilterType>('Today'); 
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
 
@@ -167,6 +151,7 @@ const Home: React.FC = () => {
       currentTasks.map((task) => {
         if (task.id === id) {
           if (task.completedAt === null) {
+            // TODO: Update completed status di Firestore
             return { ...task, completedAt: new Date().toISOString() };
           }
           return { ...task, completedAt: null };
@@ -176,45 +161,146 @@ const Home: React.FC = () => {
     );
   };
   
-  // --- FUNGSI HAPUS DAN EDIT BARU ---
-  const deleteTask = (id: string) => {
-    // Menghapus tugas dari state lokal
+  // --- FUNGSI HAPUS DAN EDIT BARU (SAMA) ---
+  
+  const handleDeleteConfirmed = (id: string) => {
     setTasks(currentTasks => currentTasks.filter(task => task.id !== id));
-    alert('Tugas berhasil dihapus!');
+    // TODO: Hapus dokumen dari Firestore
+  };
+  
+  const deleteTask = (id: string) => { /* ... SAMA ... */
+      const taskToActOn = tasks.find(t => t.id === id);
+
+      if (taskToActOn && taskToActOn.completedAt) {
+          Alert.alert("Tugas Selesai", "Tugas yang sudah selesai tidak dapat dihapus atau diedit.");
+          return;
+      }
+      
+      Alert.alert(
+          "Konfirmasi Hapus",
+          "Apakah Anda yakin ingin menghapus tugas ini?",
+          [
+              { text: "Tidak", style: "cancel" },
+              { text: "Ya", onPress: () => handleDeleteConfirmed(id), style: "destructive" }
+          ],
+          { cancelable: true }
+      );
   };
 
-  const editTask = (id: string) => {
-    // Logika untuk mengisi form modal dengan data tugas yang akan diedit
-    alert(`Membuka modal untuk Edit Tugas dengan ID: ${id}`);
-    // Untuk mengimplementasikan edit: Anda perlu mencari tugas di 'tasks',
-    // mengisi state form (setNewTaskTitle, dll), dan membuka modal (setIsModalVisible(true)).
-  };
-  // ----------------------------------
+  const editTask = (id: string) => { /* ... SAMA ... */
+      const taskToActOn = tasks.find(t => t.id === id);
 
-  const addTask = () => {
-      if (newTaskTitle.trim() === '') {
-          alert('Judul tugas tidak boleh kosong.');
+      if (taskToActOn && taskToActOn.completedAt) {
+          Alert.alert("Tugas Selesai", "Tugas yang sudah selesai tidak dapat dihapus atau diedit.");
+          return;
+      }
+      
+      alert(`Membuka modal untuk Edit Tugas dengan ID: ${id}`);
+  };
+  // ------------------------------------------
+
+  // --- 🔥 PERBAIKAN UTAMA: FUNGSI ADDTASK DENGAN FIREBASE LOGIC ---
+  const addTask = async ( // Tambahkan 'async'
+      title: string, 
+      category: CategoryLiteral, 
+      priority: TaskPriority, 
+      dueDate: string, 
+      description: string 
+  ) => {
+      // 1. VALIDASI USER
+      const user = auth.currentUser;
+      
+      if (!user) {
+          Alert.alert("Error", "Anda harus login untuk menyimpan tugas.");
+          return;
+      }
+      if (title.trim() === '') {
+          Alert.alert('Error', 'Data harus diisi semua');
           return;
       }
 
-      const newId = (tasks.length + 1).toString() + '-' + Date.now().toString();
+      const newId = (Math.random().toString(36).substring(2, 9) + Date.now()).toString();
 
       const newTask: Task = {
           id: newId,
-          project: 'Personal',
-          title: newTaskTitle.trim(),
-          priority: newTaskPriority,
+          project: category, // Gunakan kategori sebagai project
+          title: title, 
+          priority: priority, 
           completedAt: null,
-          category: newTaskCategory,
-          dueDate: newTaskDueDate,
+          category: category, 
+          dueDate: dueDate, 
       };
 
+      // 2. SIMPAN KE FIREBASE
+      try {
+          await addDoc(collection(db, "todos"), {
+              ...newTask,
+              description: description,
+              createdAt: serverTimestamp(),
+              userId: user.uid, // GUNAKAN UID ASLI PENGGUNA
+          });
+          
+          console.log("Tugas berhasil disimpan ke Firestore.");
+
+      } catch (e) {
+          console.error("Error menambahkan dokumen: ", e);
+          Alert.alert("Error", "Gagal menyimpan tugas ke database. Periksa koneksi atau aturan Firebase.");
+          return; 
+      }
+      
+      // 3. PERBARUI STATE LOKAL (Hanya jika Firebase berhasil)
       setTasks((prevTasks) => [newTask, ...prevTasks]);
       
+      // Reset state form setelah save
       setNewTaskTitle('');
       setNewTaskCategory(MOCK_CATEGORIES[0] as CategoryLiteral);
+      setNewTaskDueDate(today.toISOString());
+      setNewTaskPriority('Medium');
       setIsModalVisible(false);
   };
+  // ----------------------------------------------------
+
+  // --- 🔥 PERBAIKAN UTAMA: LOGIKA FETCH DENGAN onSnapshot ---
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) {
+        console.warn("User belum login, tidak dapat mengambil data.");
+        setTasks([]); 
+        return;
+    }
+
+    const q = query(
+        collection(db, "todos"), 
+        where("userId", "==", user.uid), 
+        orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const fetchedTasks: Task[] = [];
+        querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            
+            fetchedTasks.push({
+                id: doc.id, 
+                project: data.project,
+                title: data.title,
+                priority: data.priority,
+                // Mengatasi potensi error jika field completedAt tidak ada
+                completedAt: data.completedAt ? (data.completedAt.toDate ? data.completedAt.toDate().toISOString() : data.completedAt) : null, 
+                category: data.category,
+                dueDate: data.dueDate, 
+            } as Task);
+        });
+
+        setTasks(fetchedTasks);
+    }, (error) => {
+        console.error("Error fetching tasks: ", error);
+        Alert.alert("Error", "Gagal memuat daftar tugas dari server.");
+    });
+
+    return () => unsubscribe();
+  }, []); // Array dependency kosong: Hanya berjalan sekali saat mount
+  // ---------------------------------------------------------------------
 
   const displayedTasks = useMemo(() => {
     const now = new Date();
@@ -250,13 +336,13 @@ const Home: React.FC = () => {
     return tasksByFilter.filter(task => {
       if (task.completedAt === null) { return true; }
       const completedTime = new Date(task.completedAt);
-      return completedTime >= startOfToday;
+      return completedTime >= startOfToday; 
     });
 
   }, [tasks, activeCategory, activeFilter]); 
 
   return (
-    <>
+    <> {/* FRAGMENT PEMBUNGKUS */}
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
 
@@ -332,7 +418,7 @@ const Home: React.FC = () => {
             )}
           </View>
 
-          {/* --- [SWIPE LIST VIEW DISINI] --- */}
+          {/* --- SWIPE LIST VIEW DISINI --- */}
           <View style={styles.listContainer}>
             {displayedTasks.length === 0 ? (
               <EmptyState />
@@ -346,24 +432,33 @@ const Home: React.FC = () => {
                 renderHiddenItem={({ item }) => (
                   <View style={styles.rowBack}>
                     
-                    {/* Tombol Hapus (Diposisikan di Kanan) */}
+                    {/* Tombol Edit (KUNING) */}
                     <TouchableOpacity
-                      style={[styles.backBtn, styles.backBtnDelete]}
-                      onPress={() => deleteTask(item.id)}
-                      activeOpacity={0.8}
+                      style={styles.backBtn}
+                      onPress={() => item.completedAt ? null : editTask(item.id)} 
+                      activeOpacity={item.completedAt ? 1.0 : 0.8}
                     >
-                      <Icon name="delete-outline" size={25} color="#FFFFFF" />
-                      <Text style={styles.backBtnText}>Hapus</Text>
+                      <Text>
+                        <Icon 
+                        name="pencil-outline" 
+                        size={30} 
+                        color={item.completedAt ? '#AAA' : '#FFC300'} 
+                      />
+                      </Text>
+                      
                     </TouchableOpacity>
-                    
-                    {/* Tombol Edit */}
+
+                    {/* Tombol Hapus (MERAH) */}
                     <TouchableOpacity
-                      style={[styles.backBtn, styles.backBtnEdit]}
-                      onPress={() => editTask(item.id)}
-                      activeOpacity={0.8}
+                      style={styles.backBtn}
+                      onPress={() => item.completedAt ? null : deleteTask(item.id)} 
+                      activeOpacity={item.completedAt ? 1.0 : 0.8}
                     >
-                      <Icon name="pencil-outline" size={25} color="#FFFFFF" />
-                      <Text style={styles.backBtnText}>Edit</Text>
+                      <Icon 
+                        name="delete-outline" 
+                        size={30} 
+                        color={item.completedAt ? '#AAA' : '#FF3B30'} 
+                      />
                     </TouchableOpacity>
                   </View>
                 )}
@@ -401,7 +496,14 @@ const Home: React.FC = () => {
         onTitleChange={setNewTaskTitle}
         category={newTaskCategory}
         onCategorySelect={setNewTaskCategory as (category: string) => void}
-        onSave={addTask}
+        
+        // --- PROPS TAMBAHAN UNTUK MODAL ---
+        priority={newTaskPriority}
+        onPrioritySelect={setNewTaskPriority as (priority: TaskPriority) => void}
+        dueDate={newTaskDueDate}
+        onDueDateChange={setNewTaskDueDate}
+        
+        onSave={addTask} // onSave sekarang menerima 5 parameter
       />
     </>
   );
@@ -409,7 +511,7 @@ const Home: React.FC = () => {
 
 const { width } = Dimensions.get('window');
 
-// --- STYLES (Penambahan Style Swipe) ---
+// --- STYLES ---
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#FFFFFF' },
@@ -420,7 +522,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 30, // Jarak atas
     paddingBottom: 10,
   },
   headerTitle: { fontSize: 28, fontWeight: 'bold', color: '#333' },
@@ -484,55 +586,54 @@ const styles = StyleSheet.create({
     flex: 1,
     zIndex: 1,
   },
-  // --- STYLE SWIPE BARU ---
+  // --- STYLE SWIPE (Sudah FIX) ---
   rowBack: {
       alignItems: 'center',
-      backgroundColor: '#F8F9FE', // Sama dengan background container
+      backgroundColor: '#F8F9FE', 
       flex: 1,
       flexDirection: 'row',
-      justifyContent: 'flex-end', // Posisikan tombol di kanan
-      paddingHorizontal: 20,
-      marginVertical: 8, // Sesuaikan dengan margin taskCard
+      justifyContent: 'flex-end',
+      marginHorizontal: -20, 
+      marginVertical: 8, 
       borderRadius: 16,
+      overflow: 'hidden', 
+      paddingRight: 20, 
   },
   backBtn: {
+      backgroundColor: 'transparent', 
       alignItems: 'center',
       justifyContent: 'center',
-      width: 70,
-      height: '100%', // Ambil tinggi container rowBack
-      marginRight: 0,
-      borderRadius: 12,
-      paddingTop: 8,
+      width: 60, 
+      height: '100%', 
+      paddingHorizontal: 10, 
   },
   backBtnEdit: {
-      backgroundColor: '#34AADC', // Biru untuk Edit
-      marginLeft: 5,
-      borderTopRightRadius: 0,
-      borderBottomRightRadius: 0,
+      // Background transparan
   },
   backBtnDelete: {
-      backgroundColor: '#FF3B30', // Merah untuk Hapus
-      borderTopLeftRadius: 0,
-      borderBottomLeftRadius: 0,
+      // Background transparan
   },
   backBtnText: {
-      color: '#FFFFFF',
+      color: '#FFFFFF', 
       fontSize: 12,
       fontWeight: 'bold',
       marginTop: 4,
   },
-  // -------------------------
+  // ----------------------------------------
+  // FIX: Mengubah marginHorizontal di taskCard menjadi 0 agar sejajar
   taskList: { paddingHorizontal: 20, paddingBottom: 100 },
   taskCard: {
     backgroundColor: '#FFF',
     borderRadius: 16,
     padding: 20,
     marginVertical: 8,
+    marginHorizontal: 0, // FIX: Dihapus margin horizontal yang menyebabkan card bergeser
     flexDirection: 'row', 
     alignItems: 'flex-start', 
     elevation: 2,
+    zIndex: 10, 
   },
-  taskCardCompleted: { backgroundColor: '#F5F5F5', opacity: 0.8 },
+  taskCardCompleted: { backgroundColor: '#F5F5F5', opacity: 1 }, 
   checkbox: { marginRight: 15, marginTop: 2 },
 
   taskTextContainer: { 

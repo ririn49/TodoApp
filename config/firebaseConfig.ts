@@ -1,14 +1,15 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+// file: config/firebaseConfig.ts
 
-// Import layanan yang kita butuhkan
-import { getAuth } from "firebase/auth";
+import { initializeApp } from "firebase/app";
+
+// --- PERBAIKAN: IMPORTS MODULAR UNTUK PERSISTENCE RN ---
+import { initializeAuth, getReactNativePersistence } from "firebase/auth";
+import ReactNativeAsyncStorage from "@react-native-async-storage/async-storage";
+// --------------------------------------------------------
+
 import { getFirestore } from "firebase/firestore";
 
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+
 const firebaseConfig = {
   apiKey: "AIzaSyAFyBzkGu6ljhvhbGr3fNaR8iZlSzETsSM",
   authDomain: "doitnow-todoapp-2025.firebaseapp.com",
@@ -19,9 +20,14 @@ const firebaseConfig = {
   measurementId: "G-28GYHW80B1"
 };
 
-// Inisialisasi Firebase
-const app = initializeApp(firebaseConfig);
+// Inisialisasi Firebase App
+export const app = initializeApp(firebaseConfig); // Tetap ekspor app (opsional)
 
-// Ekspor layanan yang kita butuhkan
-export const auth = getAuth(app);
+// 1. INISIALISASI AUTH BARU
+// Ini adalah satu-satunya cara yang didukung untuk RN Persistence
+export const auth = initializeAuth(app, {
+     persistence: getReactNativePersistence(ReactNativeAsyncStorage),
+});
+
+// 2. INISIALISASI FIRESTORE
 export const db = getFirestore(app);
